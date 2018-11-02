@@ -110,7 +110,7 @@ int main(int argc, char *argv[])
    const char *basename = "results/Laghos";
    int partition_type = 111;
    bool amr = false;
-   double amr_threshold = 2e-4;
+   double amr_threshold = 1e-3;
    bool derefine = true;
    const int nc_limit = 1;
 
@@ -314,7 +314,7 @@ int main(int argc, char *argv[])
    // Define the parallel finite element spaces. We use:
    // - H1 (Gauss-Lobatto, continuous) for position and velocity.
    // - L2 (Bernstein, discontinuous) for specific internal energy.
-   L2_FECollection L2FEC(order_e, dim, BasisType::Positive);
+   L2_FECollection L2FEC(order_e, dim/*, BasisType::Positive*/);
    H1_FECollection H1FEC(order_v, dim);
    ParFiniteElementSpace L2FESpace(pmesh, &L2FEC);
    ParFiniteElementSpace H1FESpace(pmesh, &H1FEC, pmesh->Dimension());
