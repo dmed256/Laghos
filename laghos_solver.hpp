@@ -120,11 +120,6 @@ protected:
 
    mutable Vector zone_max_visc, zone_vgrad;
 
-   // Debug: grid function to spy on quadrature point values
-   //L2_FECollection qp_spy_fec;
-   //ParFiniteElementSpace qp_spy_fes;
-   //mutable ParGridFunction qp_spy_gf;
-
    mutable TimingData timer;
 
    void ComputeMaterialProperties(int nvalues, const double gamma[],
@@ -161,9 +156,6 @@ public:
    void ComputeDensity(ParGridFunction &rho);
 
    void AMRUpdate(const Vector &S, bool quick);
-
-   void DebugDump(std::ostream &os);
-   //ParGridFunction& GetDebugSpy() { return qp_spy_gf; }
 
    void SetH0(double h0) { quad_data.h0 = h0; }
    double GetH0() const { return quad_data.h0; }

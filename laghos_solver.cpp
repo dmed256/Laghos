@@ -119,11 +119,7 @@ LagrangianHydroOperator::LagrangianHydroOperator(int size,
      quad_data_is_current(false),
      Force(&l2_fes, &h1_fes), ForcePA(&quad_data, h1_fes, l2_fes),
      VMassPA(&quad_data, H1FESpace), locEMassPA(&quad_data, l2_fes),
-     locCG(),
-     //qp_spy_fec(int(round(sqrt(integ_rule.GetNPoints()))) - 1, dim),
-     //qp_spy_fes(h1_fes.GetParMesh(), &qp_spy_fec),
-     //qp_spy_gf(&qp_spy_fes),
-     timer()
+     locCG(), timer()
 {
    // Standard local assembly and inversion for energy mass matrices.
    DenseMatrix Me(l2dofs_cnt);
@@ -547,9 +543,6 @@ void LagrangianHydroOperator::UpdateQuadratureData(const Vector &S) const
       {
          ElementTransformation *T = H1FESpace.GetElementTransformation(z_id);
 
-         //Array<int> spy_dofs;
-         //qp_spy_fes.GetElementDofs(z_id, spy_dofs);
-
          if (p_assembly)
          {
             // All reference->physical Jacobians at the quadrature points.
@@ -651,12 +644,7 @@ void LagrangianHydroOperator::UpdateQuadratureData(const Vector &S) const
             zone_max_visc(z_id) = std::max(visc_coeff, zone_max_visc(z_id));
             zone_vgrad(z_id) = std::max(std::abs(det_v_grad), zone_vgrad(z_id));
             //zone_vgrad(z_id) += std::abs(det_v_grad);
-
-            // spy on some quadrature point value
-            //qp_spy_gf[spy_dofs[q]] = p;
-            //qp_spy_gf[spy_dofs[q]] = visc_coeff;
          }         
-         //zone_vgrad(z_id) /= nqp;
          ++z_id;
       }
    }
@@ -737,18 +725,6 @@ void LagrangianHydroOperator::AMRUpdate(const Vector &S, bool quick)
 
    // swap back to deformed mesh configuration
    pmesh->SwapNodes(x_gf, own_nodes);
-
-   //qp_spy_fes.Update(false);
-}
-
-void LagrangianHydroOperator::DebugDump(std::ostream &os)
-{
-   os << "width = " << width << "\n";
-   os << "height = " << height << "\n";
-   os << "nzones = " << nzones << "\n";
-
-   os << "\n*** quad_data ***\n"; quad_data.DebugDump(os);
-   os << "*** Me_inv ***\n"; Me_inv.DebugDump(os);
 }
 
 } // namespace hydrodynamics
