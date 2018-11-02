@@ -155,6 +155,7 @@ public:
    // projected as a ParGridFunction.
    void ComputeDensity(ParGridFunction &rho);
 
+   // Update all internal data on mesh change.
    void AMRUpdate(const Vector &S, bool quick);
 
    void SetH0(double h0) { quad_data.h0 = h0; }

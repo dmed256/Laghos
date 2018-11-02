@@ -33,16 +33,12 @@
 //    methods for Lagrangian hydrodynamics", SIAM Journal on Scientific
 //    Computing, (34) 2012, pp. B606–B641, https://doi.org/10.1137/120864672.
 //
+//             *** THIS IS A DYNAMIC MESH REFINEMENT DEMO ***
+//
 // Sample runs:
-//    mpirun -np 8 laghos -p 0 -m data/square01_quad.mesh -rs 3 -tf 0.75
-//    mpirun -np 8 laghos -p 0 -m data/square01_tri.mesh  -rs 1 -tf 0.75
-//    mpirun -np 8 laghos -p 0 -m data/cube01_hex.mesh    -rs 1 -tf 2.0
-//    mpirun -np 8 laghos -p 1 -m data/square01_quad.mesh -rs 3 -tf 0.8
-//    mpirun -np 8 laghos -p 1 -m data/square01_quad.mesh -rs 0 -tf 0.8 -ok 7 -ot 6
-//    mpirun -np 8 laghos -p 1 -m data/cube01_hex.mesh    -rs 2 -tf 0.6
-//    mpirun -np 8 laghos -p 2 -m data/segment01.mesh     -rs 5 -tf 0.2
-//    mpirun -np 8 laghos -p 3 -m data/rectangle01_quad.mesh -rs 2 -tf 2.5
-//    mpirun -np 8 laghos -p 3 -m data/box01_hex.mesh        -rs 1 -tf 2.5
+//    mpirun -np 8 laghos -p 1 -m data/square01_quad.mesh -rs 4 -tf 0.8 -amr
+//    mpirun -np 8 laghos -p 1 -m data/square01_quad.mesh -rs 4 -tf 0.8 -ok 3 -ot 2 -amr
+//    mpirun -np 8 laghos -p 1 -m data/cube01_hex.mesh    -rs 3 -tf 0.6 -amr
 //
 // Test problems:
 //    p = 0  --> Taylor-Green vortex (smooth problem).
@@ -110,8 +106,8 @@ int main(int argc, char *argv[])
    const char *basename = "results/Laghos";
    int partition_type = 111;
    bool amr = false;
-   double amr_threshold = 1e-3;
-   bool derefine = true;
+   double ref_threshold = 2e-4;
+   double deref_threshold = 0.75;
    const int nc_limit = 1;
 
    OptionsParser args(argc, argv);
@@ -146,11 +142,10 @@ int main(int argc, char *argv[])
 
    args.AddOption(&amr, "-amr", "--enable-amr", "-no-amr", "--disable-amr",
                   "Experimental adaptive mesh refinement (problem 1 only).");
-   args.AddOption(&amr_threshold, "-at", "--amr-threshold",
-                  "Error threshold for AMR.");
-   args.AddOption(&derefine, "-derefine", "--enable-derefinement",
-                  "-no-derefine", "--disable-derefinement",
-                  "If AMR is enabled, also enable mesh derefinement.");
+   args.AddOption(&ref_threshold, "-rt", "--ref-threshold",
+                  "AMR refinement threshold.");
+   args.AddOption(&deref_threshold, "-dt", "--deref-threshold",
+                  "AMR derefinement threshold (0 = no derefinement).");
 
    args.AddOption(&visualization, "-vis", "--visualization", "-no-vis",
                   "--no-visualization",
@@ -179,13 +174,14 @@ int main(int argc, char *argv[])
       if (mpi.Root()) { args.PrintUsage(cout); }
       return 1;
    }
-   if (mpi.Root()) { args.PrintOptions(cout); }
 
    if (amr && problem != 1)
    {
-      cout << "AMR only supported for problem 1." << endl;
+      if (mpi.Root()) { cout << "AMR only supported for problem 1." << endl; }
       return 0;
    }
+
+   if (mpi.Root()) { args.PrintOptions(cout); }
 
    // Read the serial mesh from the given mesh file on all processors.
    // Refine the mesh in serial to increase the resolution.
@@ -214,6 +210,14 @@ int main(int argc, char *argv[])
       if (mpi.Root())
       {
          cout << "Laghos does not support PA in 1D. Switching to FA." << endl;
+      }
+   }
+   if (p_assembly && amr)
+   {
+      p_assembly = false;
+      if (mpi.Root())
+      {
+         cout << "Laghos does not support PA for AMR. Switching to FA." << endl;
       }
    }
 
@@ -439,17 +443,13 @@ int main(int argc, char *argv[])
    if (amr)
    {
       // tweak h0, set it as if the mesh was fully refined to amr_max_level
-      double elem_size = 0.5; // FIXME
-      //double h0 = elem_size / (1 << amr_max_level) / order_v;*/
-      double h0 = elem_size / order_v;
+      double elem_size = 0.5; // FIXME: coarse element size
+      //double h0 = elem_size / (1 << amr_max_level) / order_v;
+      double h0 = elem_size / order_v; // the division is now done inside UpdateQuadratureData
       oper.SetH0(h0);
    }
-   if (myid == 0)
-   {
-      std::cout << "h0 = " << oper.GetH0() << std::endl;
-   }
 
-   socketstream vis_rho, vis_v, vis_e, vis_dbg;
+   socketstream vis_rho, vis_v, vis_e;
    char vishost[] = "localhost";
    int  visport   = 19916;
 
@@ -459,7 +459,7 @@ int main(int argc, char *argv[])
       oper.ComputeDensity(rho_gf);
    }
 
-/*   if (visualization)
+   if (visualization)
    {
       // Make sure all MPI ranks have sent their 'v' solution before initiating
       // another set of GLVis connections (one from each rank):
@@ -472,15 +472,12 @@ int main(int argc, char *argv[])
       VisualizeField(vis_rho, vishost, visport, rho_gf,
                      "Density", Wx, Wy, Ww, Wh);
       Wx += offx;
-      VisualizeField(vis_dbg, vishost, visport, oper.GetDebugSpy(),
-                     "Spy", Wx, Wy, Ww, Wh);
-      Wx += offx;
       VisualizeField(vis_v, vishost, visport, v_gf,
                      "Velocity", Wx, Wy, Ww, Wh);
       Wx += offx;
       VisualizeField(vis_e, vishost, visport, e_gf,
                      "Specific Internal Energy", Wx, Wy, Ww, Wh);
-   }*/
+   }
 
    // Save data for VisIt visualization.
    VisItDataCollection visit_dc(basename, pmesh);
@@ -493,12 +490,6 @@ int main(int argc, char *argv[])
       visit_dc.SetTime(0.0);
       visit_dc.Save();
    }
-
-   // AMR refinement indicator
-   /*L2_FECollection amr_l2_fec(0, dim);
-   ParFiniteElementSpace amr_l2_fes(pmesh, &amr_l2_fec);
-   ParGridFunction amr_l2_gf(&amr_l2_fes);
-   amr_l2_gf = 0;*/
 
    // Perform time-integration (looping over the time iterations, ti, with a
    // time-step dt). The object oper is of type LagrangianHydroOperator that
@@ -579,15 +570,12 @@ int main(int argc, char *argv[])
             VisualizeField(vis_rho, vishost, visport, rho_gf,
                            "Density", Wx, Wy, Ww, Wh);
             Wx += offx;
-            /*VisualizeField(vis_dbg, vishost, visport,
-                           oper.GetDebugSpy(), "Spy", Wx, Wy, Ww, Wh);
-            Wx += offx;*/
             VisualizeField(vis_v, vishost, visport,
                            v_gf, "Velocity", Wx, Wy, Ww, Wh);
             Wx += offx;
-            /*VisualizeField(vis_e, vishost, visport, e_gf,
+            VisualizeField(vis_e, vishost, visport, e_gf,
                            "Specific Internal Energy", Wx, Wy, Ww,Wh);
-            Wx += offx;*/
+            Wx += offx;
          }
 
          if (visit)
@@ -631,18 +619,6 @@ int main(int argc, char *argv[])
          }
       }
 
-      /*if (visualization && (ti % vis_steps) == 0)
-      {
-         Vector vgrad = oper.GetZoneVGrad();
-         for (int i = 0; i < vgrad.Size(); i++)
-         {
-            vgrad(i) = std::min(vgrad(i), 5.0);
-         }
-         VisualizeElementValues(vis_dbg, vishost, visport, pmesh,
-                                vgrad, "VGrad", 1200, 20, 500, 500);
-      }*/
-
-
       if (amr)
       {
          Vector &error_est = oper.GetZoneMaxVisc();
@@ -650,21 +626,13 @@ int main(int argc, char *argv[])
          Vector v_max, v_min;
          GetPerElementMinMax(v_gf, v_min, v_max);
 
-         /*if (visualization && (ti % vis_steps) == 0)
-         {
-            VisualizeElementValues(vis_dbg, vishost, visport, pmesh,
-                                   oper.GetZoneMaxVGrad(),
-                                   //rho_max,//error_est,
-                                   "VGrad", 1200, 20, 500, 500);
-         }*/
-
          bool mesh_changed = false;
 
-#if 1
+         // make a list of elements to refine
          Array<int> refs;
          for (int i = 0; i < pmesh->GetNE(); i++)
          {
-            if (error_est(i) > amr_threshold
+            if (error_est(i) > ref_threshold
                 && pmesh->pncmesh->GetElementDepth(i) < amr_max_level
                 && (v_min(i) < 1e-3 || ti < 50) // only refine the still area
                 )
@@ -673,20 +641,27 @@ int main(int argc, char *argv[])
             }
          }
 
-         if (pmesh->ReduceInt(refs.Size()))
+         int nref = pmesh->ReduceInt(refs.Size());
+         if (nref)
          {
             pmesh->GeneralRefinement(refs, 1, nc_limit);
             mesh_changed = true;
+
+            if (myid == 0)
+            {
+               cout << "Refined " << nref << " elements." << endl;
+            }
          }
-         else if (derefine)
+         else if (deref_threshold)
          {
             oper.ComputeDensity(rho_gf);
 
             Vector rho_max, rho_min;
             GetPerElementMinMax(rho_gf, rho_min, rho_max);
 
+            // simple derefinement based on zone maximum rho in post-shock region
             double rho_max_max = rho_max.Size() ? rho_max.Max() : 0.0;
-            double threshold, loc_threshold = 0.7 * rho_max_max;
+            double threshold, loc_threshold = deref_threshold * rho_max_max;
             MPI_Allreduce(&loc_threshold, &threshold, 1, MPI_DOUBLE, MPI_MAX,
                           pmesh->GetComm());
 
@@ -697,7 +672,7 @@ int main(int argc, char *argv[])
             // also, only derefine where the mesh is in motion, i.e. after the shock
             for (int i = 0; i < pmesh->GetNE(); i++)
             {
-               if (v_min(i) < 0.05) { rho_max(i) = 1e10; }
+               if (v_min(i) < 0.1) { rho_max(i) = 1e10; }
             }
 
             const int op = 2; // maximum value of fine elements
@@ -708,7 +683,7 @@ int main(int argc, char *argv[])
                cout << "Derefined, threshold = " << threshold << endl;
             }
          }
-#endif
+
          if (mesh_changed)
          {
             // update state and operator
@@ -723,7 +698,7 @@ int main(int argc, char *argv[])
 
             GetZeroBCDofs(pmesh, &H1FESpace, bdr_attr_max, ess_tdofs);
 
-            H1FESpace.PrintPartitionStats();
+            //H1FESpace.PrintPartitionStats();
          }
       }
    }

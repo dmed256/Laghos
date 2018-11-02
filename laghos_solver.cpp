@@ -600,7 +600,6 @@ void LagrangianHydroOperator::UpdateQuadratureData(const Vector &S) const
                {
                   h0 /= (1 << pncmesh->GetElementDepth(z_id));
                }
-               //std::cout << h0 << " ";
                const double h = h0 * ph_dir.Norml2() / compr_dir.Norml2();
 
                // Measure of maximal compression.
@@ -677,11 +676,13 @@ void LagrangianHydroOperator::AMRUpdate(const Vector &S, bool quick)
    GridFunction *x_gf = &x0_gf;
    pmesh->SwapNodes(x_gf, own_nodes);
 
-   // update mass matrix: TODO: don't reassemble everything
+   // update mass matrix
+   // TODO: don't reassemble everything!
    Mv.Update();
    Mv.Assemble();
 
-   // update Me_inv - TODO: do this better too
+   // update Me_inv
+   // TODO: do this better too
    {
       Me_inv.SetSize(l2dofs_cnt, l2dofs_cnt, nzones);
 
@@ -701,7 +702,7 @@ void LagrangianHydroOperator::AMRUpdate(const Vector &S, bool quick)
    quad_data.Resize(dim, nzones, integ_rule.GetNPoints());
    quad_data_is_current = false;
 
-   // Update 'rho0DetJ0' and 'Jac0inv' at all quadrature points.
+   // update 'rho0DetJ0' and 'Jac0inv' at all quadrature points
    // TODO: remove code duplication
    const int nqp = integ_rule.GetNPoints();
    Vector rho_vals(nqp);
